@@ -87,6 +87,11 @@ export class AuthService {
                 throw new ConflictException('Email already exist');
             }
         }
+        if (updateUserDto.email !== user.email) {
+            throw new ConflictException(
+                'You cannot change email on the same one'
+            );
+        }
         if (
             updateUserDto.nickname &&
             updateUserDto.nickname !== user.nickname
@@ -98,6 +103,16 @@ export class AuthService {
             ) {
                 throw new ConflictException('This nickname already exist');
             }
+        }
+        if (updateUserDto.nickname !== user.nickname) {
+            throw new ConflictException(
+                'You cannot change nickname on the same one'
+            );
+        }
+        if (updateUserDto.newPassword === updateUserDto.password) {
+            throw new ConflictException(
+                'You cannot change password on the same one'
+            );
         }
         let hashedPassword: string;
         if (updateUserDto.newPassword) {
