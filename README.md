@@ -29,4 +29,7 @@ Login
 POST /api/auth/signin
 
 Update user Data
-PATCH /api/auth/update
+PATCH /api/user/update
+
+Get user info
+GET /api/user/profile
