@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { LoggerMiddleware } from './common/logger.middleware';
 import { AllExceptionsFilter } from './filters/all-exception.filter';
 import { setupSwagger } from './config/swagger.config';
+import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 
 const PORT = process.env.PORT || 5000;
 async function bootstrap() {
@@ -14,6 +15,14 @@ async function bootstrap() {
     app.use(new LoggerMiddleware().use);
 
     setupSwagger(app);
+    const corsOptions: CorsOptions = {
+        origin: 'http://localhost:5173', // Allow the frontend domain
+        methods: 'GET, POST, PATCH, DELETE', // Allow the necessary HTTP methods
+        allowedHeaders: 'Content-Type, Authorization', // Allow headers like Authorization
+        credentials: true, // Allow cookies if needed
+    };
+
+    app.enableCors(corsOptions);
     await app.listen(PORT);
     console.log(`Server started on port ${PORT}`);
     console.log(`Swagger:  http://localhost:${PORT}/api/docs`);

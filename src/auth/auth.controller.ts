@@ -91,46 +91,4 @@ export class AuthController {
             message: 'Successful signIn',
         });
     }
-
-    @ApiBearerAuth()
-    @Patch('update')
-    @UseGuards(JwtAuthGuard)
-    @ApiOperation({ summary: 'Update user data' })
-    @ApiBody({
-        description: 'User update data',
-        type: UpdateUserDto,
-    })
-    @ApiResponse({
-        status: 200,
-        description: 'User data successfully updated',
-        schema: {
-            type: 'object',
-            properties: {
-                message: {
-                    type: 'string',
-                    example: 'User updated successfully',
-                },
-                user: {
-                    type: 'object',
-                    properties: {
-                        email: {
-                            type: 'string',
-                            example: 'user@example.com',
-                        },
-                        nickname: {
-                            type: 'string',
-                            example: 'username123',
-                        },
-                    },
-                },
-            },
-        },
-    })
-    async updateUser(
-        @Request() req: RequestExpress,
-        @Body() updateUserDto: UpdateUserDto
-    ) {
-        const userId = (req as any).userId;
-        return this.authService.updateUser(userId, req, updateUserDto);
-    }
 }

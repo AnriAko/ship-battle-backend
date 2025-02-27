@@ -4,6 +4,8 @@ import {
     Injectable,
     InternalServerErrorException,
     NotFoundException,
+    Req,
+    UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './schema/user.schema';
@@ -11,12 +13,20 @@ import { Model } from 'mongoose';
 import { CreateUserDto } from './dto/create-user.dto';
 import { logger } from 'src/common/winston-logger';
 import { UpdateUserDto } from './dto/update-user.dto';
+import * as bcrypt from 'bcrypt';
+import { ConfigService } from '@nestjs/config';
+import { Request as RequestExpress } from 'express';
 
 @Injectable()
 export class UserService {
+    private readonly saltRounds: number;
     constructor(
-        @InjectModel(User.name) private readonly userModel: Model<User>
-    ) {}
+        @InjectModel(User.name) private readonly userModel: Model<User>,
+        private configService: ConfigService
+    ) {
+        this.saltRounds =
+            parseInt(this.configService.get<string>('SALT_ROUNDS'), 10) || 12;
+    }
     async createUser(createUserDto: CreateUserDto): Promise<User> {
         return this.userModel.create(createUserDto);
     }
@@ -40,65 +50,90 @@ export class UserService {
         if (!user) return null;
         return user;
     }
-    async updateUserPassword(id: string, newPassword: string): Promise<User> {
-        const user = await this.userModel.findById(id);
+    async checkIfPasswordMatches(
+        req: RequestExpress,
+        user: User,
+        password: string
+    ) {
+        const ip = req.ip;
+        const maskedIp = ip.replace(/\.\d+$/, '.xxx');
+        const maskedEmail = user.email.replace(/(?<=.{2}).(?=.*@)/g, '*');
+
         if (!user) {
-            throw new NotFoundException('User not found');
+            logger.warn(
+                `Failed sign in attempt with invalid email: ${maskedEmail}, IP:${maskedIp}`
+            );
+            throw new UnauthorizedException('Invalid email or password');
         }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            logger.warn(
+                `Failed sign in attempt for email: ${maskedEmail} due to incorrect password, IP:${maskedIp}`
+            );
+            throw new UnauthorizedException('Invalid email or password');
+        }
+    }
+
+    async updateUser(
+        id: string,
+        updateUserDto: UpdateUserDto,
+        @Req() req: RequestExpress
+    ) {
+        const user = await this.findUserById(id);
+        await this.checkIfPasswordMatches(req, user, updateUserDto.password);
+
+        if (
+            (updateUserDto.email &&
+                updateUserDto.email !== user.email &&
+                (await this.findUserByEmail(updateUserDto.email))) ||
+            (updateUserDto.nickname &&
+                updateUserDto.nickname !== user.nickname &&
+                (await this.findUserByNickname(updateUserDto.nickname)))
+        ) {
+            throw new ConflictException('Email or nickname already exists');
+        }
+
+        if (
+            updateUserDto.email === user.email ||
+            updateUserDto.nickname === user.nickname
+        ) {
+            throw new ConflictException(
+                'You cannot change email or nickname to the same one'
+            );
+        }
+
+        if (updateUserDto.newPassword === updateUserDto.password) {
+            throw new ConflictException(
+                'You cannot change password to the same one'
+            );
+        }
+
+        const hashedPassword = updateUserDto.newPassword
+            ? await bcrypt.hash(updateUserDto.newPassword, this.saltRounds)
+            : user.password;
+
         const updatedUser = await this.userModel
             .findByIdAndUpdate(
                 id,
-                { $set: { password: newPassword } },
+                {
+                    $set: {
+                        email: updateUserDto.email,
+                        nickname: updateUserDto.nickname,
+                        password: hashedPassword,
+                    },
+                },
                 { new: true }
             )
             .select('-password -_id');
 
-        return updatedUser;
-    }
-    async updateUser(id: string, userInfo: UpdateUserDto): Promise<User> {
-        const updatedUser = await this.userModel
-            .findByIdAndUpdate(id, { $set: userInfo }, { new: true })
-            .select('-password -_id');
-        return updatedUser;
-    }
-    async updateUserNickname(id: string, newNickName: string): Promise<User> {
-        const user = await this.userModel.findById(id);
-        if (newNickName !== user.nickname) {
-            if (await this.findUserByNickname(newNickName)) {
-                throw new ConflictException('Such nickname already exist');
-            }
-        } else {
-            throw new BadRequestException(
-                'You cannot change your nickname to the same one'
-            );
-        }
-        console.log(newNickName);
-        const updatedUser = await this.userModel
-            .findByIdAndUpdate(
-                id,
-                { $set: { nickname: newNickName } },
-                { new: true }
-            )
-            .select('-password -_id');
-
-        return updatedUser;
-    }
-    async updateUserEmail(id: string, newEmail: string): Promise<User> {
-        const user = await this.userModel.findById(id);
-        if (newEmail !== user.email) {
-            if (await this.findUserByEmail(newEmail)) {
-                throw new ConflictException('Such email already exist');
-            }
-        } else {
-            throw new BadRequestException(
-                'You cannot change your email to the same one'
-            );
-        }
-        const updatedUser = await this.userModel
-            .findByIdAndUpdate(id, { $set: { email: newEmail } }, { new: true })
-            .select('-password -_id');
-
-        return updatedUser;
+        return {
+            message: 'User updated successfully',
+            user: {
+                email: updatedUser.email,
+                nickname: updatedUser.nickname,
+            },
+        };
     }
     async deleteUser(id: string): Promise<void> {
         try {
