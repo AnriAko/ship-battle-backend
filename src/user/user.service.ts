@@ -40,6 +40,13 @@ export class UserService {
         }
         return user;
     }
+    async findUserByIdWithoutPass(id: string): Promise<User> {
+        const user = await this.userModel.findById(id).select('-password');
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+        return user;
+    }
     async findUserByEmail(email: string): Promise<User | null> {
         const user = await this.userModel.findOne({ email: email });
         if (!user) return null;

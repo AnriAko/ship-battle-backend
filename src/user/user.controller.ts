@@ -49,7 +49,7 @@ export class UserController {
     })
     async getUserProfile(@Request() req: RequestExpress) {
         const userId = (req as any).userId;
-        return this.userService.findUserById(userId);
+        return this.userService.findUserByIdWithoutPass(userId);
     }
 
     @ApiBearerAuth()
